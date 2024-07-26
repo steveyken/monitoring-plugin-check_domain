@@ -17,7 +17,7 @@
 set -e
 
 PROGRAM=${0##*/}
-VERSION=1.7.1
+VERSION=1.7.1-SK
 
 STATE_OK=0
 STATE_WARNING=1
@@ -34,7 +34,9 @@ die() {
 	if [ "$rc" = 0 ]; then
 		# remove outfile if not caching
 		[ -z "$cache_dir" ] && rm -f "$outfile"
-	else
+	fi
+	# SK 2024-07-25: modified logic to prevent cache deletion on status code 1 and 2
+	if [ "$rc" = 3 ]; then
 		# always remove output even if caching to force re-check in case on errors
 		rm -f "$outfile"
 	fi
@@ -105,8 +107,11 @@ set_defaults() {
 	critical=7
 	warning=30
 
-	cache_age=0
-	cache_dir=
+	# SK 2024-07-25: modified defaults to turn caching on
+	#cache_age=0
+	#cache_dir=
+	cache_age=1
+	cache_dir=$(dirname "$0")/cache
 
 	awk=${AWK:-awk}
 }
@@ -471,10 +476,22 @@ if [ -n "$cache_dir" ]; then
 	outfile=$cache_dir/$domain
 
 	# clean up cache file if it's outdated
-	test -f "$outfile" && find "$outfile" -mtime "+$cache_age" -delete
+	# test -f "$outfile" && find "$outfile" -mtime "+$cache_age" -delete
+	# SK 2024-07-25
+	# File caches will expire at different times throughout the day rather than all at midnight.
+  # This avoids aggressive rate limiting when the script is checking too often.
+	# e.g. hkdnr.hk rate limit 1 req / 15 sec (!)
+	cache_age_in_minutes=$((cache_age * 60 * 24))
+	test -f "$outfile" && find "$outfile" -mmin "+$cache_age_in_minutes" -delete
 
 	# run whois if cache is empty or missing
 	test -s "$outfile" || run_whois
+
+	# SK 2024-07-25
+	# Add sanity check for stale cache file. Shouldn't be needed but this is a failsafe.
+	cache_file_age_in_seconds=$(($(date +%s) - $(stat -c %Y "$outfile")))
+	two_cache_age_periods_in_seconds=$((cache_age * 172800)) # cache_age is Y days so calc 2Y days in seconds
+	[ $cache_file_age_in_seconds -gt $two_cache_age_periods_in_seconds ] && die "$STATE_UNKNOWN" "STALE - Cache is stale. Data will be out of date for $domain."
 else
 	outfile=$(temporary_file)
 	run_whois

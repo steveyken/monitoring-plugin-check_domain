@@ -12,6 +12,16 @@ $ ./check_domain.sh -d github.io
 OK - Domain github.io will expire in 43 days (2014-03-08).
 ```
 
+### Local changes on this fork
+
+- Modified logic to prevent cache deletion on status code 1 and 2
+- Modified defaults to turn caching on and point to ./cache directory
+- Altered caching age to be more precise by using minutes rather than days.
+	File caches will expire at different times throughout the day rather than all at midnight.
+  This avoids aggressive rate limiting when the script is checking too often.
+	e.g. hkdnr.hk rate limit 1 req / 15 sec (!)
+- Add sanity check for stale cache file. Shouldn't be needed but this is a failsafe.
+
 ### Caching
 
 This tool excels at monitoring a small number of domains, but because of whois rate limiting, it becomes infeasible to use for a large number of domains. For this to work around, there's support for caching positive lookups for defined time period. A failed lookup will cause the domain cache file to be removed so it should be as responsive as a normal check when the critical/warning threshold is reached.
